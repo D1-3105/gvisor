@@ -2707,6 +2707,7 @@ func (tg *ThreadGroup) StateLoad(ctx context.Context, stateSourceObject state.So
 	stateSourceObject.LoadValue(26, new(*Task), func(y any) { tg.loadAppCPUClockLast(ctx, y.(*Task)) })
 	stateSourceObject.LoadValue(28, new(*Task), func(y any) { tg.loadAppSysCPUClockLast(ctx, y.(*Task)) })
 	stateSourceObject.LoadValue(38, new(*OldRSeqCriticalRegion), func(y any) { tg.loadOldRSeqCritical(ctx, y.(*OldRSeqCriticalRegion)) })
+	stateSourceObject.AfterLoad(func() { tg.markExistedAtCheckpoint() })
 }
 
 func (s *sigsegvLockStop) StateTypeName() string {

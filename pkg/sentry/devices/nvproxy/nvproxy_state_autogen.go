@@ -222,6 +222,16 @@ func (nvp *nvproxy) StateFields() []string {
 		"regularDevs",
 		"frontendFDs",
 		"clients",
+		"hostToGuestDeviceInstance",
+		"guestToHostDeviceInstance",
+		"hostToGuestGPUID",
+		"guestToHostGPUID",
+		"hostToGuestUUID",
+		"guestToHostUUID",
+		"hostToGuestMinor",
+		"guestToHostMinor",
+		"hostToGuestPCIAddr",
+		"guestToHostPCIAddr",
 	}
 }
 
@@ -236,6 +246,16 @@ func (nvp *nvproxy) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(5, &nvp.regularDevs)
 	stateSinkObject.Save(6, &nvp.frontendFDs)
 	stateSinkObject.Save(7, &nvp.clients)
+	stateSinkObject.Save(8, &nvp.hostToGuestDeviceInstance)
+	stateSinkObject.Save(9, &nvp.guestToHostDeviceInstance)
+	stateSinkObject.Save(10, &nvp.hostToGuestGPUID)
+	stateSinkObject.Save(11, &nvp.guestToHostGPUID)
+	stateSinkObject.Save(12, &nvp.hostToGuestUUID)
+	stateSinkObject.Save(13, &nvp.guestToHostUUID)
+	stateSinkObject.Save(14, &nvp.hostToGuestMinor)
+	stateSinkObject.Save(15, &nvp.guestToHostMinor)
+	stateSinkObject.Save(16, &nvp.hostToGuestPCIAddr)
+	stateSinkObject.Save(17, &nvp.guestToHostPCIAddr)
 }
 
 // +checklocksignore
@@ -248,6 +268,16 @@ func (nvp *nvproxy) StateLoad(ctx context.Context, stateSourceObject state.Sourc
 	stateSourceObject.Load(5, &nvp.regularDevs)
 	stateSourceObject.Load(6, &nvp.frontendFDs)
 	stateSourceObject.Load(7, &nvp.clients)
+	stateSourceObject.Load(8, &nvp.hostToGuestDeviceInstance)
+	stateSourceObject.Load(9, &nvp.guestToHostDeviceInstance)
+	stateSourceObject.Load(10, &nvp.hostToGuestGPUID)
+	stateSourceObject.Load(11, &nvp.guestToHostGPUID)
+	stateSourceObject.Load(12, &nvp.hostToGuestUUID)
+	stateSourceObject.Load(13, &nvp.guestToHostUUID)
+	stateSourceObject.Load(14, &nvp.hostToGuestMinor)
+	stateSourceObject.Load(15, &nvp.guestToHostMinor)
+	stateSourceObject.Load(16, &nvp.hostToGuestPCIAddr)
+	stateSourceObject.Load(17, &nvp.guestToHostPCIAddr)
 	stateSourceObject.AfterLoad(func() { nvp.afterLoad(ctx) })
 }
 
