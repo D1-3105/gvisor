@@ -2739,6 +2739,31 @@ func (d *devicesData) StateLoad(ctx context.Context, stateSourceObject state.Sou
 	stateSourceObject.Load(0, &d.dynamicBytesFileSetAttr)
 }
 
+func (d *gpuUUIDMapData) StateTypeName() string {
+	return "pkg/sentry/fsimpl/proc.gpuUUIDMapData"
+}
+
+func (d *gpuUUIDMapData) StateFields() []string {
+	return []string{
+		"dynamicBytesFileSetAttr",
+	}
+}
+
+func (d *gpuUUIDMapData) beforeSave() {}
+
+// +checklocksignore
+func (d *gpuUUIDMapData) StateSave(stateSinkObject state.Sink) {
+	d.beforeSave()
+	stateSinkObject.Save(0, &d.dynamicBytesFileSetAttr)
+}
+
+func (d *gpuUUIDMapData) afterLoad(context.Context) {}
+
+// +checklocksignore
+func (d *gpuUUIDMapData) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &d.dynamicBytesFileSetAttr)
+}
+
 func (s *sentryMeminfoData) StateTypeName() string {
 	return "pkg/sentry/fsimpl/proc.sentryMeminfoData"
 }
@@ -3188,6 +3213,7 @@ func init() {
 	state.Register((*cgroupsData)(nil))
 	state.Register((*cmdLineData)(nil))
 	state.Register((*devicesData)(nil))
+	state.Register((*gpuUUIDMapData)(nil))
 	state.Register((*sentryMeminfoData)(nil))
 	state.Register((*tasksInodeRefs)(nil))
 	state.Register((*tcpMemDir)(nil))
