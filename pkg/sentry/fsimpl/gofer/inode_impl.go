@@ -126,6 +126,11 @@ func (d *dentry) openHandle(ctx context.Context, read, write, trunc bool) (handl
 	if trunc {
 		flags |= unix.O_TRUNC
 	}
+	return d.openHandleFlags(ctx, flags)
+}
+
+// Preconditions: !d.isSynthetic() and fs.renameMu is locked.
+func (d *dentry) openHandleFlags(ctx context.Context, flags uint32) (handle, error) {
 	switch it := d.inode.impl.(type) {
 	case *lisafsInode:
 		return it.openHandle(ctx, flags)
@@ -133,6 +138,51 @@ func (d *dentry) openHandle(ctx context.Context, read, write, trunc bool) (handl
 		return it.openHandle(ctx, flags, d)
 	default:
 		panic("unknown inode implementation")
+	}
+}
+
+// directHandle returns a separate host open file description for direct I/O.
+// Never change O_DIRECT on readFD/writeFD: those descriptions are also used by
+// buffered I/O and memory mappings. Handles are opened lazily after restore and
+// for F_SETFL(O_DIRECT), and retained until inode destruction.
+//
+// Precondition: fs.renameMu is locked.
+func (d *dentry) directHandle(ctx context.Context, write bool) (handle, error) {
+	i := d.inode
+	i.handleMu.Lock()
+	defer i.handleMu.Unlock()
+	cached := &i.directReadHandle
+	flags := uint32(unix.O_RDONLY | unix.O_DIRECT)
+	if write {
+		cached = &i.directWriteHandle
+		flags = unix.O_WRONLY | unix.O_DIRECT
+	}
+	if *cached != nil {
+		return **cached, nil
+	}
+	h, err := d.openHandleFlags(ctx, flags)
+	if err != nil {
+		return noHandle, err
+	}
+	// The RPC path uses unaligned message buffers and cannot implement direct
+	// I/O. Refuse it explicitly so callers can retry with buffered I/O.
+	if h.fd < 0 {
+		h.close(ctx)
+		return noHandle, unix.EOPNOTSUPP
+	}
+	*cached = &h
+	return h, nil
+}
+
+// Precondition: i.handleMu is locked.
+func (i *inode) closeDirectHandles(ctx context.Context) {
+	if i.directReadHandle != nil {
+		i.directReadHandle.close(ctx)
+		i.directReadHandle = nil
+	}
+	if i.directWriteHandle != nil {
+		i.directWriteHandle.close(ctx)
+		i.directWriteHandle = nil
 	}
 }
 
