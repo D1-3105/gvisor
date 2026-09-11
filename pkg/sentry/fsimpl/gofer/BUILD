@@ -148,3 +148,14 @@ go_test(
         "//pkg/sentry/pgalloc",
     ],
 )
+
+go_test(
+    name = "direct_io_test",
+    size = "small",
+    srcs = ["direct_io_test.go"],
+    library = ":gofer",
+    deps = [
+        "//pkg/context",
+        "@org_golang_x_sys//unix:go_default_library",
+    ],
+)

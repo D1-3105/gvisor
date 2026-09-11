@@ -797,6 +797,7 @@ func (fs *filesystem) Release(ctx context.Context) {
 		d.inode.dirty.RemoveAllAndAccount()
 		d.inode.dataMu.Unlock()
 		// Close host FDs if they exist.
+		d.inode.closeDirectHandles(ctx)
 		d.inode.closeHostFDs()
 		d.inode.handleMu.Unlock()
 	}
@@ -988,6 +989,12 @@ type inode struct {
 	writeFD  atomicbitops.Int32 `state:"nosave"`
 	mmapFD   atomicbitops.Int32 `state:"nosave"`
 
+	// Direct handles are independent of buffered and mmap handles. Protected
+	// by handleMu, never replaced while live, and reopened on demand after
+	// restore. Host descriptor numbers must not be saved in checkpoints.
+	directReadHandle  *handle `state:"nosave"`
+	directWriteHandle *handle `state:"nosave"`
+
 	dataMu sync.RWMutex `state:"nosave"`
 
 	// If this inode represents a regular file that is client-cached, cache
@@ -1102,6 +1109,8 @@ func (i *inode) destroy(ctx context.Context, d *dentry) {
 	}
 
 	i.dataMu.Unlock()
+
+	i.closeDirectHandles(ctx)
 
 	// Close any resources held by the implementation.
 	i.destroyImpl(ctx, d)

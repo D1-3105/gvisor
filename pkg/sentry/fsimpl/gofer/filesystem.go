@@ -1123,7 +1123,7 @@ func (d *dentry) open(ctx context.Context, rp *vfs.ResolvingPath, opts *vfs.Open
 			if err := d.ensureSharedHandle(ctx, ats.MayRead(), ats.MayWrite(), trunc); err != nil {
 				return nil, err
 			}
-			fd, err := newRegularFileFD(mnt, d, opts.Flags, rp.Credentials())
+			fd, err := newRegularFileFD(ctx, mnt, d, opts.Flags, rp.Credentials())
 			if err != nil {
 				return nil, err
 			}
@@ -1373,7 +1373,7 @@ func (d *dentry) createAndOpenChildLocked(ctx context.Context, rp *vfs.Resolving
 	// Finally, construct a file description representing the created file.
 	var childVFSFD *vfs.FileDescription
 	if useRegularFileFD {
-		fd, err := newRegularFileFD(mnt, child, opts.Flags, creds)
+		fd, err := newRegularFileFD(ctx, mnt, child, opts.Flags, creds)
 		if err != nil {
 			return nil, err
 		}

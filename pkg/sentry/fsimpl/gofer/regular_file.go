@@ -50,7 +50,19 @@ type regularFileFD struct {
 	off int64
 }
 
-func newRegularFileFD(mnt *vfs.Mount, d *dentry, flags uint32, creds *auth.Credentials) (*regularFileFD, error) {
+func newRegularFileFD(ctx context.Context, mnt *vfs.Mount, d *dentry, flags uint32, creds *auth.Credentials) (*regularFileFD, error) {
+	if flags&linux.O_DIRECT != 0 {
+		if vfs.MayReadFileWithOpenFlags(flags) {
+			if _, err := d.directHandle(ctx, false); err != nil {
+				return nil, err
+			}
+		}
+		if vfs.MayWriteFileWithOpenFlags(flags) {
+			if _, err := d.directHandle(ctx, true); err != nil {
+				return nil, err
+			}
+		}
+	}
 	fd := &regularFileFD{}
 	fd.LockFD.Init(&d.inode.locks)
 	if err := fd.vfsfd.Init(fd, flags, creds, mnt, &d.vfsd, &vfs.FileDescriptionOptions{
@@ -142,6 +154,12 @@ func (fd *regularFileFD) PRead(ctx context.Context, dst usermem.IOSequence, offs
 		readErr error
 	)
 	if fd.vfsfd.StatusFlags()&linux.O_DIRECT != 0 {
+		d.inode.fs.renameMu.RLock()
+		h, err := d.directHandle(ctx, false)
+		d.inode.fs.renameMu.RUnlock()
+		if err != nil {
+			return 0, err
+		}
 		// Write dirty cached pages that will be touched by the read back to
 		// the remote file.
 		if err := d.writeback(ctx, offset, dst.NumBytes()); err != nil {
@@ -150,6 +168,7 @@ func (fd *regularFileFD) PRead(ctx context.Context, dst usermem.IOSequence, offs
 		rw := getDentryReadWriter(ctx, d, offset)
 		// Require the read to go to the remote file.
 		rw.direct = true
+		rw.directHandle = h
 		n, readErr = dst.CopyOutFrom(ctx, rw)
 		putDentryReadWriter(rw)
 		if d.inode.fs.opts.interop != InteropModeShared {
@@ -198,6 +217,16 @@ func (fd *regularFileFD) pwrite(ctx context.Context, src usermem.IOSequence, off
 	}
 
 	d := fd.dentry()
+	direct := fd.vfsfd.StatusFlags()&linux.O_DIRECT != 0
+	var directHandle handle
+	if direct {
+		d.inode.fs.renameMu.RLock()
+		directHandle, err = d.directHandle(ctx, true)
+		d.inode.fs.renameMu.RUnlock()
+		if err != nil {
+			return 0, offset, err
+		}
+	}
 
 	d.inode.metadataMu.Lock()
 	defer d.inode.metadataMu.Unlock()
@@ -232,13 +261,14 @@ func (fd *regularFileFD) pwrite(ctx context.Context, src usermem.IOSequence, off
 	rw := getDentryReadWriter(ctx, d, offset)
 	defer putDentryReadWriter(rw)
 
-	if fd.vfsfd.StatusFlags()&linux.O_DIRECT != 0 {
+	if direct {
 		if err := fd.writeCache(ctx, d, offset, src); err != nil {
 			return 0, offset, err
 		}
 
 		// Require the write to go to the remote file.
 		rw.direct = true
+		rw.directHandle = directHandle
 	}
 
 	n, err := src.CopyInTo(ctx, rw)
@@ -326,10 +356,11 @@ func (fd *regularFileFD) Write(ctx context.Context, src usermem.IOSequence, opts
 }
 
 type dentryReadWriter struct {
-	ctx    context.Context
-	d      *dentry
-	off    uint64
-	direct bool
+	ctx          context.Context
+	d            *dentry
+	off          uint64
+	direct       bool
+	directHandle handle
 }
 
 var dentryReadWriterPool = sync.Pool{
@@ -350,6 +381,7 @@ func getDentryReadWriter(ctx context.Context, d *dentry, offset int64) *dentryRe
 func putDentryReadWriter(rw *dentryReadWriter) {
 	rw.ctx = nil
 	rw.d = nil
+	rw.directHandle = noHandle
 	dentryReadWriterPool.Put(rw)
 }
 
@@ -367,6 +399,9 @@ func (rw *dentryReadWriter) ReadToBlocks(dsts safemem.BlockSeq) (uint64, error) 
 	rw.d.inode.handleMu.RLock()
 	defer rw.d.inode.handleMu.RUnlock()
 	h := rw.d.inode.readHandle()
+	if rw.direct {
+		h = rw.directHandle
+	}
 	if (rw.d.inode.mmapFD.RacyLoad() >= 0 && !rw.d.inode.fs.opts.forcePageCache) || rw.d.inode.fs.opts.interop == InteropModeShared || rw.direct {
 		n, err := h.readToBlocksAt(rw.ctx, dsts, rw.off)
 		rw.off += n
@@ -481,6 +516,9 @@ func (rw *dentryReadWriter) WriteFromBlocks(srcs safemem.BlockSeq) (uint64, erro
 	rw.d.inode.handleMu.RLock()
 	defer rw.d.inode.handleMu.RUnlock()
 	h := rw.d.inode.writeHandle()
+	if rw.direct {
+		h = rw.directHandle
+	}
 	if (rw.d.inode.mmapFD.RacyLoad() >= 0 && !rw.d.inode.fs.opts.forcePageCache) || rw.d.inode.fs.opts.interop == InteropModeShared || rw.direct {
 		n, err := h.writeFromBlocksAt(rw.ctx, srcs, rw.off)
 		rw.off += n
